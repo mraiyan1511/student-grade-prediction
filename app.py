@@ -19,9 +19,14 @@ st.set_page_config(
 
 model_data = joblib.load("student_model.pkl")
 
-model = model_data["model"]
-features = model_data["features"]
-encoders = model_data["encoders"]
+if isinstance(model_data, dict):
+    model = model_data["model"]
+    features = model_data["features"]
+    encoders = model_data["encoders"]
+else:
+    model = model_data
+    features = list(model.feature_names_in_)
+    encoders = {}
 
 # --------------------------------------------------
 # Custom CSS
