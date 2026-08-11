@@ -1,68 +1,265 @@
+
 import streamlit as st
 import pandas as pd
 import joblib
 
-# Load trained model
-model = joblib.load("student_model.pkl")
+# --------------------------------------------------
+# Page Configuration
+# --------------------------------------------------
 
 st.set_page_config(
     page_title="Student Grade Prediction",
     page_icon="🎓",
-    layout="centered"
+    layout="wide"
 )
 
-# Title
-st.title("🎓 Student Grade Prediction")
-st.write("Enter the student details below to predict the final grade.")
+# --------------------------------------------------
+# Load Model
+# --------------------------------------------------
+
+model_data = joblib.load("student_model.pkl")
+
+model = model_data["model"]
+features = model_data["features"]
+encoders = model_data["encoders"]
+
+# --------------------------------------------------
+# Custom CSS
+# --------------------------------------------------
+
+st.markdown("""
+<style>
+
+.main {
+    background-color: #f5f7fb;
+}
+
+.title {
+    text-align: center;
+    font-size: 42px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.subtitle {
+    text-align: center;
+    color: gray;
+    font-size: 18px;
+    margin-bottom: 30px;
+}
+
+.card {
+    background-color: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0px 4px 15px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+}
+
+.result {
+    text-align: center;
+    padding: 30px;
+    border-radius: 15px;
+    background-color: white;
+    box-shadow: 0px 4px 15px rgba(0,0,0,0.08);
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# --------------------------------------------------
+# Header
+# --------------------------------------------------
+
+st.markdown(
+    '<div class="title">🎓 Student Grade Prediction</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">AI-powered student final grade prediction system</div>',
+    unsafe_allow_html=True
+)
 
 st.divider()
 
-# Student inputs
-st.subheader("📚 Student Information")
+# --------------------------------------------------
+# Student Information
+# --------------------------------------------------
+
+st.subheader("📋 Student Information")
+
+st.info(
+    "Enter the student details below. "
+    "Only features used by the trained model are required."
+)
+
+# --------------------------------------------------
+# Create Input Dictionary
+# --------------------------------------------------
+
+input_values = {}
+
+# Numeric columns from the dataset
+numeric_ranges = {
+    "age": (15, 25, 17),
+    "Medu": (0, 4, 2),
+    "Fedu": (0, 4, 2),
+    "traveltime": (1, 4, 1),
+    "studytime": (1, 4, 2),
+    "failures": (0, 4, 0),
+    "famrel": (1, 5, 4),
+    "freetime": (1, 5, 3),
+    "goout": (1, 5, 3),
+    "Dalc": (1, 5, 1),
+    "Walc": (1, 5, 1),
+    "health": (1, 5, 3),
+    "absences": (0, 100, 5),
+    "G1": (0, 20, 10),
+    "G2": (0, 20, 10)
+}
+
+# --------------------------------------------------
+# Input Fields
+# --------------------------------------------------
 
 col1, col2 = st.columns(2)
 
-with col1:
-    age = st.number_input("Age", min_value=15, max_value=25, value=17)
-    studytime = st.number_input("Study Time", min_value=1, max_value=4, value=2)
-    failures = st.number_input("Past Failures", min_value=0, max_value=4, value=0)
-    absences = st.number_input("Absences", min_value=0, max_value=100, value=5)
+for index, feature in enumerate(features):
 
-with col2:
-    G1 = st.number_input("First Period Grade (G1)", min_value=0, max_value=20, value=10)
-    G2 = st.number_input("Second Period Grade (G2)", min_value=0, max_value=20, value=10)
-    Medu = st.number_input("Mother's Education", min_value=0, max_value=4, value=2)
-    Fedu = st.number_input("Father's Education", min_value=0, max_value=4, value=2)
+    # Categorical feature
+    if feature in encoders:
+
+        encoder = encoders[feature]
+
+        options = list(encoder.classes_)
+
+        if index % 2 == 0:
+            with col1:
+                value = st.selectbox(
+                    feature,
+                    options,
+                    key=feature
+                )
+        else:
+            with col2:
+                value = st.selectbox(
+                    feature,
+                    options,
+                    key=feature
+                )
+
+        input_values[feature] = encoder.transform([value])[0]
+
+    # Numeric feature
+    else:
+
+        if feature in numeric_ranges:
+
+            min_value, max_value, default_value = numeric_ranges[feature]
+
+        else:
+
+            min_value = 0
+            max_value = 100
+            default_value = 0
+
+        if index % 2 == 0:
+            with col1:
+                value = st.number_input(
+                    feature,
+                    min_value=min_value,
+                    max_value=max_value,
+                    value=default_value,
+                    key=feature
+                )
+        else:
+            with col2:
+                value = st.number_input(
+                    feature,
+                    min_value=min_value,
+                    max_value=max_value,
+                    value=default_value,
+                    key=feature
+                )
+
+        input_values[feature] = value
+
+# --------------------------------------------------
+# Prediction Button
+# --------------------------------------------------
 
 st.divider()
 
-# Prediction
-if st.button("🔮 Predict Grade", use_container_width=True):
+predict_button = st.button(
+    "🔮 Predict Final Grade",
+    use_container_width=True
+)
 
-    # Create input dataframe
-    input_data = pd.DataFrame({
-        "age": [age],
-        "studytime": [studytime],
-        "failures": [failures],
-        "absences": [absences],
-        "G1": [G1],
-        "G2": [G2],
-        "Medu": [Medu],
-        "Fedu": [Fedu]
-    })
+# --------------------------------------------------
+# Prediction
+# --------------------------------------------------
+
+if predict_button:
 
     try:
+
+        # Create dataframe with EXACT model features
+        input_data = pd.DataFrame([input_values])
+
+        # Make sure feature order is exactly the same
+        input_data = input_data[features]
+
+        # Prediction
         prediction = model.predict(input_data)[0]
 
-        st.success(f"🎯 Predicted Final Grade: {prediction}")
+        # Result
+        st.divider()
+
+        st.markdown(
+            '<div class="result">',
+            unsafe_allow_html=True
+        )
+
+        st.subheader("🎯 Prediction Result")
+
+        st.markdown(
+            f"<h1>{prediction}</h1>",
+            unsafe_allow_html=True
+        )
+
+        st.write("Predicted Final Grade")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Performance message
 
         if prediction >= 15:
-            st.info("🌟 Excellent Performance")
+
+            st.success(
+                "🌟 Excellent Performance!"
+            )
+
         elif prediction >= 10:
-            st.info("👍 Good / Average Performance")
+
+            st.info(
+                "👍 Good / Average Performance"
+            )
+
         else:
-            st.warning("⚠️ Student may need additional support.")
+
+            st.warning(
+                "⚠️ Student may need additional academic support."
+            )
+
+        # Show input data
+
+        with st.expander("🔍 View Input Data"):
+
+            st.dataframe(input_data)
 
     except Exception as e:
-        st.error("Prediction failed.")
-        st.write(e)
+
+        st.error("❌ Prediction failed.")
+
+        st.exception(e)
